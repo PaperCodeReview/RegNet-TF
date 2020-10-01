@@ -11,11 +11,11 @@ from model.complexity import get_complexity
 def get_argument():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config",         type=str,       default='./config.yml')
-    parser.add_argument("--num-model",      type=int,       default=100)
-    parser.add_argument('--baseline-path',  type=str,       default=None)
-    parser.add_argument('--model-name',     type=str,       help='AnyNetXA')
+    parser.add_argument("--num_model",      type=int,       default=100)
+    parser.add_argument('--model_name',     type=str,       help='AnyNetXA')
 
     return parser.parse_args()
+
 
 def select_config(cfg):
     new_cfg = copy.deepcopy(cfg)
@@ -58,6 +58,7 @@ def select_config(cfg):
 
     return new_cfg, True
 
+
 def check_overlap(path, whole_cfg, new_cfg):
     stamp_list = os.listdir(path)
     for k, v in whole_cfg.items():
@@ -65,11 +66,11 @@ def check_overlap(path, whole_cfg, new_cfg):
             return False
     return True
 
+
 def search():
     args = get_argument()
     assert args.model_name is not None, 'model_name must be set.'
 
-    sys.path.append(args.baseline_path)
     from common import get_logger
     logger = get_logger("MyLogger")
 
@@ -95,6 +96,7 @@ def search():
                         default_flow_style=False)
                     whole_cfg[cnt] = new_cfg
                     cnt += 1
+
 
 if __name__ == '__main__':
     search()

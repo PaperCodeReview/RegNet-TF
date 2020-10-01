@@ -1,20 +1,23 @@
 # hyperparameter
-dataset: cifar100
-img_size: 32
-classes: 100
+dataset: imagenet
+img_size: 224
+classes: 1000
 
-stem: simple # simple, resnet
+# cifar : simple / imagenet : simple, resnet
+stem: simple 
 stem_out: 32
 n_stage: 4
-type_stage: res
+type_stage: resbottleneck
 
 # n_block, n_channel : maximum value
 n_block: 
   - 1
   - 16
+
+# divisible by 8
 n_channel: 
-  - 8
-  - 1024 # divisible by 8
+  - 8 # divisible by ?
+  - 1024 # max value
 
 # bottleneck_ratio, group_width : list
 bottleneck_ratio:

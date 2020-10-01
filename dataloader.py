@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from augment import Augment
+
 AUTO = tf.data.experimental.AUTOTUNE
 
 def set_dataset(args):
@@ -65,27 +67,26 @@ def set_dataset(args):
     return np.array(trainset, dtype='object'), np.array(valset, dtype='object')
 
 #############################################################################
-def fetch_dataset(path, y):
-    x = tf.io.read_file(path)
-    return tf.data.Dataset.from_tensors((x, y))
-
-def dataloader(args, datalist, mode, batch_size, shuffle=True):
-    '''dataloader for cross-entropy loss
-    '''
-    sys.path.append(args.baseline_path)
+def dataloader(args, datalist, mode, shuffle=True):
+    """
+    Dataloader for cross-entropy loss
     
-    def augmentation(img, label, shape):
-        if args.augment == 'weak':
-            from generator.augment import WeakAugment
-            augment = WeakAugment(args, mode)
-        else:
-            raise ValueError()
+    Argument
+        args : Namespace of arguments
+        datalist : trainset or valset
+        mode : train or val
+        shuffle : shuffle or not
+    
+    Return
+        tf.data pipeline
+    """
+    def fetch_dataset(path, y):
+        x = tf.io.read_file(path)
+        return tf.data.Dataset.from_tensors((x, y))
 
-        for f in augment.augment_list:
-            if 'crop' in f.__name__ or 'pad' in f.__name__:
-                img = f(img, shape)
-            else:
-                img = f(img)
+    def augmentation(img, label, shape):
+        augment = Augment(args, mode)
+        img = augment(img, shape)
         
         # one-hot encodding
         label = tf.one_hot(label, args.classes)
@@ -112,6 +113,6 @@ def dataloader(args, datalist, mode, batch_size, shuffle=True):
     if 'cifar' not in args.dataset:
         dataset = dataset.interleave(fetch_dataset, num_parallel_calls=AUTO)
     dataset = dataset.map(preprocess_image, num_parallel_calls=AUTO)
-    dataset = dataset.batch(batch_size)
+    dataset = dataset.batch(args.batch_size)
     dataset = dataset.prefetch(AUTO)
     return dataset

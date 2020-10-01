@@ -1,75 +1,23 @@
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-import sys
-import tqdm
 import yaml
-import json
-import random
 import argparse
 import numpy as np
 import pandas as pd
-from datetime import datetime
 
-import tensorflow as tf
-
+from common import set_seed
+from common import get_arguments
+from common import get_logger
+from common import get_session
+from callback import create_callbacks
+from callback import OptionalLearningRateSchedule
 from model.anynet import AnyNet
 from dataloader import set_dataset
 from dataloader import dataloader
 
+import tensorflow as tf
 
-def get_argument():
-    parser = argparse.ArgumentParser()
-    # model
-    parser.add_argument("--model-name",     type=str,       help='AnyNetXA')
-    parser.add_argument("--stamp",          type=int,       default=0)
-    parser.add_argument("--dataset",        type=str,       default='imagenet')
-
-    # hyperparameter
-    parser.add_argument("--batch-size",     type=int,       default=32, help="batch size per replica")
-    parser.add_argument("--steps",          type=int,       default=0)
-    parser.add_argument("--epochs",         type=int,       default=100)
-
-    parser.add_argument("--optimizer",      type=str,       default='sgd')
-    parser.add_argument("--lr",             type=float,     default=.001)
-    parser.add_argument("--loss",           type=str,       default='crossentropy')
-
-    parser.add_argument("--augment",        type=str,       default='weak')
-    parser.add_argument("--standardize",    type=str,       default='minmax1',      choices=['minmax1', 'minmax2', 'norm', 'eachnorm'])
-    parser.add_argument("--pad",            type=int,       default=0,              help='-1: square, 0: no, >1: set')
-    parser.add_argument("--crop",           action='store_true')
-    parser.add_argument("--angle",          type=int,       default=0)
-    parser.add_argument("--vflip",          action='store_true')
-    parser.add_argument("--hflip",          action='store_true')
-    parser.add_argument("--brightness",     type=float,     default=0.)
-    parser.add_argument("--contrast",       type=float,     default=0.)
-    parser.add_argument("--saturation",     type=float,     default=0.)
-    parser.add_argument("--hue",            type=float,     default=0.)
-    parser.add_argument("--jitter",         type=float,     default=0.)
-    parser.add_argument("--gray",           action='store_true')
-    parser.add_argument("--noise",          type=float,     default=0.)
-
-    # callback
-    parser.add_argument("--checkpoint",     action='store_true')
-    parser.add_argument("--history",        action='store_true')
-    parser.add_argument("--evaluate",       action='store_true')
-    parser.add_argument("--tensorboard",    action='store_true')
-    parser.add_argument("--lr-mode",        type=str,       default='constant',     choices=['constant', 'exponential', 'cosine'])
-    parser.add_argument("--lr-value",       type=float,     default=.1)
-    parser.add_argument("--lr-interval",    type=str,       default='20,50,80')
-    parser.add_argument("--lr-warmup",      type=int,       default=0)
-
-    # etc
-    parser.add_argument("--summary",        action='store_true')
-    parser.add_argument('--baseline-path',  type=str,       default='/workspace/src/Challenge/code_baseline')
-    parser.add_argument('--src-path',       type=str,       default='.')
-    parser.add_argument('--data-path',      type=str,       default=None)
-    parser.add_argument('--result-path',    type=str,       default='./result')
-    parser.add_argument('--snapshot',       type=str,       default=None)
-    parser.add_argument("--gpus",           type=str,       default=-1)
-    parser.add_argument("--ignore-search",  type=str,       default='')
-
-    return parser.parse_args()
 
 def set_cfg(args, logger):
     path = os.path.join(args.result_path, args.dataset, args.model_name, str(args.stamp))
@@ -112,18 +60,13 @@ def create_model(args, logger):
 
     return model
 
+
 def main():
-    args = get_argument()
+    set_seed()
+    args = get_arguments()
     assert args.model_name is not None, 'model_name must be set.'
 
-    sys.path.append(args.baseline_path)
-    from common import get_logger
-    from common import get_session
-    from callback_eager import OptionalLearningRateSchedule
-    from callback import create_callbacks
-
     logger = get_logger("MyLogger")
-
     args, initial_epoch = set_cfg(args, logger)
     if initial_epoch == -1:
         # training was already finished!
@@ -133,26 +76,28 @@ def main():
     for k, v in vars(args).items():
         logger.info("{} : {}".format(k, v))
 
+
     ##########################
     # Strategy
     ##########################
     # strategy = tf.distribute.MirroredStrategy()
     strategy = tf.distribute.experimental.CentralStorageStrategy()
-    global_batch_size = args.batch_size * strategy.num_replicas_in_sync
+    num_workers = strategy.num_replicas_in_sync
+    assert args.batch_size % num_workers == 0
 
-    logger.info('{} : {}'.format(strategy.__class__.__name__, strategy.num_replicas_in_sync))
-    logger.info("GLOBAL BATCH SIZE : {}".format(global_batch_size))
+    logger.info('{} : {}'.format(strategy.__class__.__name__, num_workers))
+    logger.info("GLOBAL BATCH SIZE : {}".format(args.batch_size))
+
 
     ##########################
     # Generator
     ##########################
     trainset, valset = set_dataset(args)
+    train_generator = dataloader(args, trainset, 'train')
+    val_generator = dataloader(args, valset, 'val', shuffle=False)
     
-    train_generator = dataloader(args, trainset, 'train', global_batch_size)
-    val_generator = dataloader(args, valset, 'val', global_batch_size, shuffle=False)
-    
-    steps_per_epoch = args.steps or len(trainset) // global_batch_size
-    validation_steps = len(valset) // global_batch_size
+    steps_per_epoch = args.steps or len(trainset) // args.batch_size
+    validation_steps = len(valset) // args.batch_size
     
     logger.info("TOTAL STEPS OF DATASET FOR TRAINING")
     logger.info("========== trainset ==========")
@@ -162,6 +107,7 @@ def main():
     logger.info("=========== valset ===========")
     logger.info("    --> {}".format(len(valset)))
     logger.info("    --> {}".format(validation_steps))
+
 
     ##########################
     # Model
@@ -175,15 +121,8 @@ def main():
             return
 
         # optimizer
-        lr_scheduler = OptionalLearningRateSchedule(args, steps_per_epoch, initial_epoch)
-        if args.optimizer == 'sgd':
-            optimizer = tf.keras.optimizers.SGD(lr_scheduler, momentum=.9, decay=.00005)
-        elif args.optimizer == 'rmsprop':
-            optimizer = tf.keras.optimizers.RMSprop(lr_scheduler)
-        elif args.optimizer == 'adam':
-            optimizer = tf.keras.optimizers.Adam(lr_scheduler)
-        else:
-            raise ValueError()
+        scheduler = OptionalLearningRateSchedule(args, steps_per_epoch, initial_epoch)
+        optimizer = tf.keras.optimizers.SGD(scheduler, momentum=.9, decay=.00005)
 
         model.compile(
             optimizer=optimizer,
@@ -191,12 +130,15 @@ def main():
             metrics=['acc']
         )
 
+
     ##########################
     # Callbacks
     ##########################
     callbacks = create_callbacks(
-        args, path=os.path.join(args.result_path, args.dataset, args.model_name, str(args.stamp)))
+        args, 
+        path=os.path.join(args.result_path, args.dataset, args.model_name, str(args.stamp)))
     logger.info("Build callbacks!")
+
 
     ##########################
     # Train
@@ -213,5 +155,5 @@ def main():
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     main()

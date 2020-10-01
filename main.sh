@@ -3,22 +3,16 @@
 SET=$(seq 0 499)
 for stamp in $SET
 do
-    python main.py \
-    --model-name AnyNetXA \
-    --stamp $stamp \
-    --dataset cifar100 \
-    --batch-size 128 \
-    --epochs 10 \
-    --optimizer sgd \
-    --lr 0.05 \
-    --standardize norm \
-    --pad 4 \
-    --crop \
-    --hflip \
-    --jitter 0.1 \
-    --lr-mode cosine \
-    --checkpoint \
-    --history \
-    --data-path /workspace/data2/Dataset/cifar100 \
-    --gpus 3
+	python main.py \
+	--model_name AnyNetXA \
+	--stamp $stamp \
+	--dataset imagenet \
+	--batch_size 128 \
+	--epochs 10 \
+	--optimizer sgd \
+	--lr 0.05 \
+	--checkpoint \
+	--history \
+	--data_path /workspace/data/Dataset/imagenet \
+	--gpus 0,1
 done
