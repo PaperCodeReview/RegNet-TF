@@ -12,15 +12,15 @@ This is an unofficial implementation of RegNet [(Designing Network Design Spaces
 - First, set the design space in `config.yml`
 - Second, sample models in the design space
 ```
-python search_space.py --config /path/of/config.yml --num_model $NUM_MODEL --model_name $MODEL_NAME
-
+>>> python search_space.py --config /path/of/config.yml --num_model $NUM_MODEL --model_name $MODEL_NAME
+```
 or
-
-./search.sh
+```
+>>> ./search.sh
 ```
 - Then, train models which are already set
 ```
-./main.sh
+>>> ./main.sh
 ```
 
 ## Evaluation
